@@ -1,360 +1,343 @@
-import os
-import io
-from typing import List, Tuple
-
 import streamlit as st
 from dotenv import load_dotenv
 from openai import OpenAI
+
 import numpy as np
 from pypdf import PdfReader
+import pickle
+import faiss
+from pathlib import Path
+import os
 
-# Basic config
+st.set_page_config(
+    page_title="AI Legal Policy Assistant",
+    page_icon="⚖️",
+    layout="wide",
+)
+
 load_dotenv()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-EMBEDDING_MODEL = "text-embedding-3-small"
-CHAT_MODEL = "gpt-4o-mini"
+# OpenAI client (only if key is present)
+client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
-# safety limits so we don't blow up memory
-MAX_CHARS = 200_000   # max characters per upload batch
-MAX_WORDS = 20_000    # max words for chunking
+BASE_DIR = Path(__file__).resolve().parent
+MODEL_PATH = BASE_DIR / "policy_model.pkl"
+VECTORIZER_PATH = BASE_DIR / "policy_vectorizer.pkl"
+
+# in-memory objects so we load them only once
+_model = None
+_vectorizer = None
+
+# ML PART (COMPLIANT / RISKY) 
+
+def load_policy_model():
+    """Load trained logistic regression model + TF-IDF vectorizer."""
+    global _model, _vectorizer
+
+    if _model is not None and _vectorizer is not None:
+        return _model, _vectorizer
+
+    if not MODEL_PATH.exists() or not VECTORIZER_PATH.exists():
+        return None, None
+
+    with open(MODEL_PATH, "rb") as f:
+        _model = pickle.load(f)
+
+    with open(VECTORIZER_PATH, "rb") as f:
+        _vectorizer = pickle.load(f)
+
+    return _model, _vectorizer
 
 
-def get_client(api_key: str | None = None) -> OpenAI:
-    """Create OpenAI client from .env or sidebar key."""
-    key = api_key or os.getenv("OPENAI_API_KEY")
-    if not key:
-        raise ValueError("OpenAI API key not found. Add it in .env or in the sidebar.")
-    return OpenAI(api_key=key)
+def predict_policy_risk(text: str):
+    """
+    Predict if a clause is COMPLIANT or RISKY.
+    Returns (label, confidence between 0 and 1).
+    """
+    model, vec = load_policy_model()
+    if model is None or vec is None:
+        return "model_not_available", 0.0
 
-# File → text → chunks
-def extract_text_from_pdf(file) -> str:
-    """Very simple PDF text extractor."""
-    bytes_data = file.read()
-    reader = PdfReader(io.BytesIO(bytes_data))
+    X = vec.transform([text])
+    proba = model.predict_proba(X)[0]
+    label = model.predict(X)[0]
 
-    pages = []
+    class_index = list(model.classes_).index(label)
+    conf = float(proba[class_index])
+    return label, conf
+
+# RAG HELPERS (PDF + FAISS)
+
+def init_session():
+    """Create session_state variables if not present."""
+    if "faiss_index" not in st.session_state:
+        st.session_state.faiss_index = None
+    if "policy_chunks" not in st.session_state:
+        st.session_state.policy_chunks = []
+    if "chunk_embeddings" not in st.session_state:
+        st.session_state.chunk_embeddings = None
+    if "llm_answer" not in st.session_state:
+        st.session_state.llm_answer = ""
+
+
+def extract_text_from_pdf(file_bytes: bytes) -> str:
+    """Read text from a PDF file (simple version)."""
+    reader = PdfReader(io := bytes_to_stream(file_bytes))
+    texts = []
     for page in reader.pages:
-        txt = page.extract_text() or ""
-        pages.append(txt)
+        try:
+            t = page.extract_text() or ""
+            texts.append(t.replace("\n", " "))
+        except Exception:
+            pass
+    return "\n".join(texts)
 
-    return "\n".join(pages)
+
+def bytes_to_stream(b: bytes):
+    # small helper so we don’t import io everywhere
+    import io as _io
+    return _io.BytesIO(b)
 
 
-def chunk_text(text: str, chunk_size: int = 800, overlap: int = 150) -> List[str]:
-    """
-    Split long text into overlapping chunks of words.
-
-    Fixed so it cannot get stuck in an infinite loop
-    (which was causing MemoryError earlier).
-    """
+def split_into_chunks(text: str, chunk_size: int = 600, overlap: int = 120):
+    """Split big text into overlapping word chunks."""
     words = text.split()
-
-    # hard limit to avoid huge uploads eating RAM
-    if len(words) > MAX_WORDS:
-        words = words[:MAX_WORDS]
-
-    chunks: List[str] = []
-    n = len(words)
+    chunks = []
     start = 0
-
-    while start < n:
-        end = min(start + chunk_size, n)
+    while start < len(words):
+        end = start + chunk_size
         chunk = " ".join(words[start:end])
-        chunks.append(chunk)
-
-        if end == n:
-            break
-        start = end - overlap
-        if start < 0:
-            start = 0
-
+        if chunk.strip():
+            chunks.append(chunk.strip())
+        start += chunk_size - overlap
     return chunks
 
-# Embeddings + retrieval
-def embed_texts(client: OpenAI, texts: List[str]) -> np.ndarray:
-    """Create embeddings for a list of texts."""
-    all_embs: List[List[float]] = []
-    batch_size = 64
 
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i:i + batch_size]
+def create_embeddings(texts):
+    """Create OpenAI embeddings for a list of texts."""
+    if client is None:
+        return None
+
+    try:
         resp = client.embeddings.create(
-            model=EMBEDDING_MODEL,
-            input=batch,
+            model="text-embedding-3-small",
+            input=texts,
         )
-        batch_embs = [d.embedding for d in resp.data]
-        all_embs.extend(batch_embs)
-
-    return np.array(all_embs, dtype="float32")
-
-
-def get_query_embedding(client: OpenAI, query: str) -> np.ndarray:
-    resp = client.embeddings.create(
-        model=EMBEDDING_MODEL,
-        input=[query],
-    )
-    return np.array(resp.data[0].embedding, dtype="float32").reshape(1, -1)
+        vectors = [d.embedding for d in resp.data]
+        return np.array(vectors, dtype="float32")
+    except Exception:
+        # if no credit / error, we just disable RAG
+        return None
 
 
-def cosine_search(
-    doc_embeddings: np.ndarray,
-    query_embedding: np.ndarray,
-    k: int = 5,
-) -> Tuple[np.ndarray, np.ndarray]:
+def build_faiss_index(chunks):
+    """Create FAISS index from text chunks."""
+    emb = create_embeddings(chunks)
+    if emb is None:
+        return None, None
+
+    dim = emb.shape[1]
+    index = faiss.IndexFlatL2(dim)
+    index.add(emb)
+    return index, emb
+
+
+def search_chunks(query: str, k: int = 5):
+    """Get top-k relevant chunks from the index."""
+    if st.session_state.faiss_index is None:
+        return []
+
+    q_emb = create_embeddings([query])
+    if q_emb is None:
+        return []
+
+    D, I = st.session_state.faiss_index.search(q_emb, k)
+    indices = I[0]
+    results = []
+    for idx in indices:
+        if 0 <= idx < len(st.session_state.policy_chunks):
+            results.append(st.session_state.policy_chunks[idx])
+    return results
+
+
+# LLM REVIEW (USES RAG CONTEXT) 
+
+def llm_available() -> bool:
+    return client is not None
+
+
+def llm_review_clause(clause: str, context_chunks):
     """
-    Simple cosine similarity search using NumPy only
-    (no faiss needed).
+    Ask LLM to review the clause using retrieved policy context.
+    If no key / credit, return a simple text explanation.
     """
-    # normalise
-    doc_norms = np.linalg.norm(doc_embeddings, axis=1, keepdims=True) + 1e-10
-    q_norm = np.linalg.norm(query_embedding, axis=1, keepdims=True) + 1e-10
+    context = "\n\n---\n\n".join(context_chunks[:5]) if context_chunks else "No policy context available."
 
-    doc_normed = doc_embeddings / doc_norms
-    q_normed = query_embedding / q_norm
+    prompt = f"""
+You are a legal/compliance assistant for a company.
 
-    scores = (doc_normed @ q_normed.T).ravel()          # shape (N,)
-    topk_idx = np.argsort(-scores)[:k]                  # highest first
-    topk_scores = scores[topk_idx]
-    return topk_scores, topk_idx
+Clause:
+\"\"\"{clause}\"\"\"
 
-
-def build_context(chunks: List[str], indices: List[int]) -> str:
-    """Format retrieved chunks into a context string."""
-    parts = []
-    for rank, idx in enumerate(indices, start=1):
-        if 0 <= idx < len(chunks):
-            parts.append(f"[Policy Chunk {rank}]\n{chunks[idx]}\n")
-    return "\n\n".join(parts)
-
-
-# LLM logic: analysis + Q&A
-def generate_compliance_analysis(
-    client: OpenAI,
-    scenario: str,
-    context: str,
-) -> str:
-    system_prompt = """
-You are an assistant that helps with *policy* and *AI usage* compliance.
-You are NOT a lawyer and this is NOT legal advice.
-
-Rules:
-- Use ONLY the provided policy context.
-- Classify the scenario as one of:
-  - Likely Compliant
-  - Risky / Needs Review
-  - Likely Non-compliant
-- Explain the reasoning in simple language.
-- Point to the policy chunks you used.
-"""
-
-    user_prompt = f"""
-Policy Context:
-----------------
+Relevant policy snippets:
 {context}
 
-Scenario:
----------
-{scenario}
-
-Please respond in this structure:
-
-1. Classification: <one of the three options>
-2. Reasoning:
-   - bullet 1
-   - bullet 2
-   - bullet 3
-3. Referenced chunks: [Policy Chunk X], [Policy Chunk Y]
+Tasks:
+1. Say if the clause looks mostly compliant or risky, and why.
+2. Point out any dangerous / vague phrases.
+3. Suggest a safer rewrite that would be more compliant.
+Use clear simple English.
 """
 
-    resp = client.chat.completions.create(
-        model=CHAT_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.2,
-    )
-    return resp.choices[0].message.content
-
-
-def answer_policy_question(
-    client: OpenAI,
-    question: str,
-    context: str,
-) -> str:
-    system_prompt = """
-You answer questions about policies using ONLY the given context.
-If the context is not enough, say that clearly.
-Do not give real legal advice; this is just an internal helper.
-"""
-
-    user_prompt = f"""
-Policy Context:
-----------------
-{context}
-
-Question:
----------
-{question}
-
-Give a short, structured answer and mention uncertainty if information is missing.
-"""
-
-    resp = client.chat.completions.create(
-        model=CHAT_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.2,
-    )
-    return resp.choices[0].message.content
-
-
-# Streamlit UI
-def main():
-    st.title("⚖️ AI Legal & Policy Compliance RAG Assistant")
-    st.write(
-        "Upload your company policies and check if AI/data usage scenarios look compliant.\n"
-        "_Note: this is a student project, not real legal advice._"
-    )
-
-    # ---- Sidebar ----
-    with st.sidebar:
-        st.subheader("Settings")
-        api_key = st.text_input(
-            "OpenAI API Key (optional)",
-            type="password",
-            help="If empty, the app will try OPENAI_API_KEY from your .env file.",
+    if not llm_available():
+        return (
+            "LLM review is in demo mode (no API key or credits).\n\n"
+            "In a real deployment this section would contain a detailed "
+            "legal/compliance analysis generated by an LLM using the policy snippets above."
         )
 
-    # ---- File upload ----
-    uploaded_files = st.file_uploader(
-        "Upload policy documents (PDF or TXT)",
-        type=["pdf", "txt"],
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return resp.choices[0].message.content
+    except Exception as e:
+        return (
+            "LLM call failed (probably quota or network).\n\n"
+            f"Error: {e}\n\n"
+            "You can still use the ML classifier and retrieved policy snippets as a quick signal."
+        )
+
+
+# UI 
+init_session()
+
+st.markdown(
+    """
+    <h2 style="margin-bottom:0.2rem;">AI Legal Policy Assistant</h2>
+    <p style="font-size:0.9rem; color:#bbbbbb;">
+    Paste a policy clause, upload your policy PDFs, and get:
+    <br>• a simple ML risk score (COMPLIANT / RISKY)
+    <br>• relevant policy snippets using RAG
+    <br>• an optional LLM explanation.
+    </p>
+    """,
+    unsafe_allow_html=True,
+)
+
+# Sidebar: PDF upload and indexing 
+with st.sidebar:
+    st.header("📚 Policy Documents")
+    files = st.file_uploader(
+        "Upload policy PDFs (data protection, HR, security, etc.)",
+        type=["pdf"],
         accept_multiple_files=True,
     )
 
-    # store state
-    if "policy_chunks" not in st.session_state:
-        st.session_state.policy_chunks = None
-        st.session_state.policy_embs = None
+    if st.button("Build / refresh index"):
+        full_text = ""
+        for f in files or []:
+            try:
+                pdf_bytes = f.read()
+                text = extract_text_from_pdf(pdf_bytes)
+                full_text += "\n" + text
+            except Exception:
+                pass
 
-    if st.button("📦 Build Policy Knowledge Base"):
-        if not uploaded_files:
-            st.error("Please upload at least one PDF or TXT policy file.")
+        if not full_text.strip():
+            st.warning("Could not read any text from PDFs.")
         else:
-            try:
-                client = get_client(api_key)
-            except ValueError as e:
-                st.error(str(e))
-                return
+            chunks = split_into_chunks(full_text)
+            index, emb = build_faiss_index(chunks)
+            if index is None:
+                st.error(
+                    "Could not create embeddings. Probably no OpenAI key/credits. "
+                    "RAG will be disabled but ML classifier still works."
+                )
+            else:
+                st.session_state.faiss_index = index
+                st.session_state.policy_chunks = chunks
+                st.session_state.chunk_embeddings = emb
+                st.success(f"Index built with {len(chunks)} chunks.")
 
-            # read + combine text
-            full_text = ""
-            for f in uploaded_files:
-                if f.type == "application/pdf":
-                    full_text += extract_text_from_pdf(f) + "\n"
-                else:
-                    full_text += f.read().decode("utf-8", errors="ignore") + "\n"
-
-            # character safety limit
-            if len(full_text) > MAX_CHARS:
-                full_text = full_text[:MAX_CHARS]
-
-            chunks = chunk_text(full_text)
-            if not chunks:
-                st.error("Could not extract any text from the uploaded files.")
-                return
-
-            with st.spinner("Creating embeddings..."):
-                embs = embed_texts(client, chunks)
-
-            st.session_state.policy_chunks = chunks
-            st.session_state.policy_embs = embs
-            st.success(f"Knowledge base built with {len(chunks)} chunks ✅")
-
-    st.divider()
-
-    if st.session_state.policy_chunks is None:
-        st.info("Upload policies and click **Build Policy Knowledge Base** first.")
-        return
-
-    mode = st.radio("Mode", ["Scenario Compliance Check", "Policy Q&A"], horizontal=True)
-
-    # ---- Scenario mode ----
-    if mode == "Scenario Compliance Check":
-        scenario = st.text_area(
-            "Describe your AI / data usage scenario:",
-            height=160,
-            placeholder="Example: We want to send customer chat logs with phone numbers to a third-party AI API "
-                        "for model training.",
-        )
-
-        if st.button("🔍 Analyse Compliance"):
-            if not scenario.strip():
-                st.error("Please type a scenario first.")
-                return
-
-            try:
-                client = get_client(api_key)
-            except ValueError as e:
-                st.error(str(e))
-                return
-
-            with st.spinner("Retrieving relevant policy chunks..."):
-                q_emb = get_query_embedding(client, scenario)
-                _, idxs = cosine_search(st.session_state.policy_embs, q_emb, k=5)
-                context = build_context(st.session_state.policy_chunks, idxs.tolist())
-
-            with st.spinner("Generating analysis..."):
-                analysis = generate_compliance_analysis(client, scenario, context)
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("Compliance Analysis")
-                st.write(analysis)
-
-            with col2:
-                st.subheader("Policy Context Used")
-                st.write(context)
-
-    # ---- Q&A mode ----
+    if st.session_state.faiss_index is not None:
+        st.caption(f"Indexed chunks: {len(st.session_state.policy_chunks)} (RAG ready)")
     else:
-        question = st.text_area(
-            "Ask a question about your policies:",
-            height=140,
-            placeholder="Example: Are we allowed to share anonymised customer data with an external analytics vendor?",
-        )
-
-        if st.button("💬 Answer Question"):
-            if not question.strip():
-                st.error("Please type a question first.")
-                return
-
-            try:
-                client = get_client(api_key)
-            except ValueError as e:
-                st.error(str(e))
-                return
-
-            with st.spinner("Retrieving relevant policy chunks..."):
-                q_emb = get_query_embedding(client, question)
-                _, idxs = cosine_search(st.session_state.policy_embs, q_emb, k=5)
-                context = build_context(st.session_state.policy_chunks, idxs.tolist())
-
-            with st.spinner("Generating answer..."):
-                answer = answer_policy_question(client, question, context)
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.subheader("Answer")
-                st.write(answer)
-
-            with col2:
-                st.subheader("Policy Context Used")
-                st.write(context)
+        st.caption("No index yet. Upload PDFs and click the button above.")
 
 
-if __name__ == "__main__":
-    main()
+# Main layout
+col_left, col_right = st.columns([1.4, 1.0])
+
+# Left: clause + LLM review 
+with col_left:
+    st.subheader("📜 Clause")
+    clause_text = st.text_area(
+        "Paste a single clause or short section:",
+        height=160,
+        placeholder=(
+            "Example: The company may share customer data with third parties "
+            "for marketing without explicit consent."
+        ),
+    )
+
+    analyze_btn = st.button("Analyze clause")
+
+    st.markdown("---")
+    st.subheader("🤖 LLM review (with policy context)")
+
+    if analyze_btn and clause_text.strip():
+        with st.spinner("Getting policy context and generating answer..."):
+            ctx_chunks = search_chunks(clause_text.strip())
+            st.session_state.llm_answer = llm_review_clause(clause_text.strip(), ctx_chunks)
+    elif analyze_btn and not clause_text.strip():
+        st.warning("Please paste a clause first.")
+
+    if clause_text.strip() and st.session_state.llm_answer:
+        st.write(st.session_state.llm_answer)
+    else:
+        st.info("Paste a clause and click **Analyze clause** to see the review here.")
+
+# Right: ML risk + context snippets 
+with col_right:
+    st.subheader("🔎 ML risk classifier")
+
+    if analyze_btn and clause_text.strip():
+        label, conf = predict_policy_risk(clause_text.strip())
+        if label == "model_not_available":
+            st.error(
+                "Trained model not found. Run `python train_model.py` once "
+                "to create policy_model.pkl and policy_vectorizer.pkl."
+            )
+        else:
+            emoji = "🟢" if label == "compliant" else "🔴"
+            st.markdown(
+                f"**{emoji} Prediction:** `{label.upper()}`  "
+                f"(confidence: {conf * 100:.1f}%)"
+            )
+            st.caption("Simple logistic regression model trained on example clauses.")
+    else:
+        st.info("After you click Analyze, the ML prediction will show here.")
+
+    st.markdown("---")
+    st.subheader("📎 Retrieved policy snippets (RAG)")
+
+    if analyze_btn and clause_text.strip():
+        snippets = search_chunks(clause_text.strip())
+        if not snippets:
+            st.write("No snippets available (no index or embeddings disabled).")
+        else:
+            for i, snip in enumerate(snippets[:3], start=1):
+                st.markdown(f"**Snippet {i}:**")
+                st.write(snip)
+    else:
+        st.write("After analysis, policy snippets related to the clause will appear here.")
+
+st.markdown(
+    "<p style='font-size:0.75rem; color:#888888; margin-top:1rem;'>"
+    "Project: AI-Legal-Policy-RAG – combines a small trained ML model with RAG and optional LLM review."
+    "</p>",
+    unsafe_allow_html=True,
+)
