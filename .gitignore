@@ -1,3 +1,5 @@
+policy_model.pkl
+policy_vectorizer.pkl
 .venv/
 .env
 __pycache__/
