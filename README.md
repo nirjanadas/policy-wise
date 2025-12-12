@@ -24,42 +24,35 @@ This makes PolicyWise a smart internal assistant for reviewing documents.
 
 ---
 
-# AI Legal Policy Assistant (RAG + Risk Classifier)
+## 🚀 Features
 
-This project is an AI assistant that helps analyze company policy and legal documents.  
-It combines three things:
+### 🔍 1. Document Search (RAG)
+Upload PDF policy documents.  
+PolicyWise will:
 
-1. **Document Search (RAG)** → Finds the most relevant parts of uploaded policy PDFs  
-2. **Risk Classifier (ML model)** → Detects if a sentence is COMPLIANT or RISKY  
-3. **AI Explanation (OpenAI)** → Gives simple explanations and safer rewrites  
+- Extract text  
+- Break it into chunks  
+- Create embeddings  
+- Use FAISS to retrieve the most relevant sections
 
-It works like a small internal tool used by HR, Legal, and Compliance teams.
-
----
-
-## ✨ Features
-
-### 🔍 Search inside policy documents
-- Upload policy PDF files  
-- The system reads and breaks them into small chunks  
-- It searches the document to find the most relevant text for your question  
-
-### 🛡️ Compliance Risk Detection (ML Model)
-A simple ML model trained by me using Logistic Regression + TF-IDF.  
+### 🛡️ 2. Risk Classifier (ML Model)
+A Logistic Regression + TF-IDF classifier trained by me.  
 It predicts:
 
 - **COMPLIANT**  
-- **RISKY**  
+- **RISKY**
 
-It also gives a confidence score.
+With a confidence score.
 
-### 🤖 AI Explanation (LLM)
-Uses OpenAI to:
-- Explain why something is risky  
+### 🤖 3. AI Explanation (LLM-Enhanced)
+If an OpenAI key is provided, PolicyWise can:
+
+- Explain why a clause is risky  
+- Highlight dangerous wording  
 - Suggest a safer rewrite  
-- Give a combined answer using RAG + ML result  
-- Use simple, HR-friendly language  
+- Use RAG + ML to give better, more contextual answers  
 
+---
 
 ## 📁 Project Structure
 
