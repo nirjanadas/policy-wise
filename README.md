@@ -127,8 +127,8 @@ streamlit run app.py
 3. 🛡️ ML Risk Classification
    - TF-IDF vectorizer transforms text
    - Logistic Regression predicts:
-       → ✅ COMPLIANT
-       → ❌ RISKY
+      ``` → ✅ COMPLIANT
+          → ❌ RISKY ```
    - Outputs label + confidence score
 
 4. 🤖 LLM Review
