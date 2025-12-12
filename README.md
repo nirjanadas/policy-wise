@@ -74,3 +74,17 @@ policy-wise/
 │   └── config.toml        # Technical blue theme for UI
 │
 └── .gitignore             # Ignored files (venv, .env, cache, etc.)
+```
+---
+
+## 🛠️ Installation
+
+### 1️⃣ Create a virtual environment
+```bash
+python -m venv venv
+venv\Scripts\activate
+```
+
+### 2️⃣ Install dependencies
+pip install -r requirements.txt       
+
