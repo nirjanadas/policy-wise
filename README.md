@@ -86,5 +86,19 @@ venv\Scripts\activate
 ```
 
 ### 2️⃣ Install dependencies
-```pip install -r requirements.txt```       
+```bash
+pip install -r requirements.txt
+```
+
+### 3️⃣ Train the ML model
+```bash
+python train_model.py
+```
+
+### 4️⃣ Run the Streamlit application 
+```bash
+streamlit run app.py
+```
+
+ 
 
