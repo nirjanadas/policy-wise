@@ -78,9 +78,13 @@ policy-wise/
 ---
 
 ## 🧱 Architecture 
+
+Here’s a compact high-level overview of how PolicyWise processes, analyzes, and evaluates policy text:
 ```bash
-🧑‍💻 User (Streamlit UI) → 📄 PDF Processing (Extract + Chunk + Embed) → 🔍 FAISS Search (RAG) → 🛡️ ML Classifier (TF-IDF + LR) → 🤖 LLM Review (Explain + Rewrite) → 📤 Final Output
-```
+🧑‍💻 User (Streamlit UI) → 📄 PDF Processing (Extract + Chunk + Embed)
+→ 🔍 FAISS Search (RAG) → 🛡️ ML Classifier (TF-IDF + LR) → 📤 Final Output
+ ```
+
 
 
 ## 🛠️ Installation
