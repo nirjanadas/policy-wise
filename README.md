@@ -184,6 +184,25 @@ UTILITIES 🔧
 | 💾 Pickle       | Save model & vectorizer       |
 | 🔢 NumPy        | Numerical operations          |
 
+---
+
+## 💡 Why PolicyWise Matters
+
+- Helps Legal teams quickly evaluate compliance risks  
+- Reduces manual effort in reviewing internal policies  
+- Uses a hybrid AI system (RAG + ML + LLM), similar to real enterprise tools  
+- Demonstrates applied knowledge of NLP, vector search, and model pipelines  
+
+---
+
+## 🚧 Future Enhancements
+
+- Add LegalBERT for deeper clause understanding
+- Add metadata-based RAG (policy titles, categories)
+- Deploy with Docker / Streamlit Cloud / HuggingFace
+- Add authentication for internal company use
+- Add clause history + downloadable reports
+
 
 
  
