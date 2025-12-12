@@ -56,19 +56,21 @@ If an OpenAI key is provided, PolicyWise can:
 
 ## 📁 Project Structure
 
-app.py                # Main Streamlit application
-train_model.py        # Training script for the ML  
-                       classifier
-policy_model.pkl      # Saved classifier
-policy_vectorizer.pkl # Saved TF-IDF vectorizer
-requirements.txt
-README.md
+policy-wise/
+│
+├── app.py                 # Main Streamlit application
+├── train_model.py         # Training script for ML classifier
+├── requirements.txt       # Project dependencies
+├── README.md              # Documentation
+│
+├── policy_model.pkl       # (Optional) Saved ML classifier
+├── policy_vectorizer.pkl  # (Optional) Saved TF-IDF vectorizer
+│
+├── assets/
+│   └── policywise.png     # Screenshot for README
+│
+├── .streamlit/
+│   └── config.toml        # Technical blue theme for UI
+│
+└── .gitignore             # Ignored files (venv, .env, cache, etc.)
 
-
-
-This project demonstrates:
--How RAG systems work
--How ML and LLMs can work together
--Ability to train and deploy a small classifier
--Practical features used in real companies
--Clear and simple user interface (Streamlit)
