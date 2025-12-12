@@ -1,9 +1,9 @@
-streamlit
+streamlit==1.32.0
 openai>=1.0.0
-faiss-cpu
-pypdf
-python-dotenv
-tiktoken
-scikit-learn
-numpy
-pandas
+faiss-cpu==1.7.4
+pypdf==3.17.1
+python-dotenv==1.0.1
+tiktoken==0.7.0
+scikit-learn==1.4.1
+numpy==1.26.4
+pandas==2.2.1
