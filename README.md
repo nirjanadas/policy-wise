@@ -147,30 +147,43 @@ streamlit run app.py
 
 ### 🧰 TECH STACK 
 -------------
+FRONTEND 🖥️
+-----------
+| Technology | Purpose                                   |
+|-----------|--------------------------------------------|
+| 🎨 Streamlit | UI & user interaction                    |
+| 🐍 Python    | Core language                            |
 
-Frontend / UI
-- 🖥️ Streamlit
 
-Document Processing
-- 📄 PyPDF
-- ✂️ Custom text chunking
+BACKEND / PROCESSING ⚙️
+------------------------
+| Technology           | Purpose                                      |
+|----------------------|----------------------------------------------|
+| 📄 PyPDF             | Extract text from PDFs                        |
+| ✂️ Custom Chunking   | Split policy text into chunks                 |
+| 🧠 OpenAI Embeddings | Convert text into vectors                     |
+| 🗃️ FAISS Vector DB   | Fast semantic search (RAG)                    |
+| 📊 Scikit-learn      | ML toolkit                                   |
+| 🧩 TF-IDF Vectorizer | Transform text for ML model                   |
+| 🛡️ Logistic Regression | Classify COMPLIANT / RISKY                   |
 
-Retrieval (RAG)
-- 🧠 OpenAI Embeddings (text-embedding-3-small)
-- 🗃️ FAISS Vector Index
 
-Machine Learning
-- 📊 Scikit-learn
-- 🧩 TF-IDF Vectorizer
-- 🛡️ Logistic Regression Classifier
+AI LAYER 🤖
+-----------
+| Technology                 | Purpose                           |
+|----------------------------|-----------------------------------|
+| 🧠 OpenAI Chat Models      | Explanation + safer rewrite        |
+| 🔍 RAG Pipeline            | Retrieve relevant policy snippets |
 
-LLM Reasoning
-- 🤖 OpenAI Chat Models (gpt-4o-mini)
 
-Utility / Infra
-- 🔑 Python-dotenv
-- 🔢 NumPy
-- 💾 Pickle (model + vectorizer storage)
+UTILITIES 🔧
+------------
+| Technology      | Purpose                       |
+|-----------------|-------------------------------|
+| 🔑 Python-dotenv| Load environment variables    |
+| 💾 Pickle       | Save model & vectorizer       |
+| 🔢 NumPy        | Numerical operations          |
+
 
 
  
