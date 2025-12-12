@@ -1,3 +1,16 @@
+<p align="center">
+  <img src="./assets/policywise.png" alt="PolicyWise Screenshot" width="85%">
+</p>
+
+<h1 align="center">🛡️ PolicyWise — AI Legal Policy Assistant</h1>
+
+<p align="center">
+An intelligent assistant that analyzes policy and legal clauses using RAG, a custom ML risk classifier, and LLM-powered explanations.
+</p>
+
+---
+
+
 # AI Legal Policy Assistant (RAG + Risk Classifier)
 
 This project is an AI assistant that helps analyze company policy and legal documents.  
@@ -45,7 +58,7 @@ policy_vectorizer.pkl # Saved TF-IDF vectorizer
 requirements.txt
 README.md
 
-### 🎯 Why This Project Is Useful
+
 
 This project demonstrates:
 -How RAG systems work
