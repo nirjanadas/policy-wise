@@ -27,30 +27,30 @@ This makes PolicyWise a smart internal assistant for reviewing documents.
 ## 🚀 Features
 
 ### 🔍 1. Document Search (RAG)
-     Upload PDF policy documents.  
-     PolicyWise will:
+Upload PDF policy documents.  
+PolicyWise will:
 
-     - Extract text  
-     - Break it into chunks  
-     - Create embeddings  
-     - Use FAISS to retrieve the most relevant sections
+- Extract text  
+- Break it into chunks  
+- Create embeddings  
+- Use FAISS to retrieve the most relevant sections
 
 ### 🛡️ 2. Risk Classifier (ML Model)
-     A Logistic Regression + TF-IDF classifier trained by me.  
-     It predicts:
+A Logistic Regression + TF-IDF classifier trained by me.  
+It predicts:
 
-     - **COMPLIANT**  
-     - **RISKY**
+- **COMPLIANT**  
+- **RISKY**
 
-     With a confidence score.
+With a confidence score.
 
 ### 🤖 3. AI Explanation (LLM-Enhanced)
-    If an OpenAI key is provided, PolicyWise can:
+If an OpenAI key is provided, PolicyWise can:
 
-    - Explain why a clause is risky  
-    - Highlight dangerous wording  
-    - Suggest a safer rewrite  
-    - Use RAG + ML to give better, more contextual answers  
+- Explain why a clause is risky  
+- Highlight dangerous wording  
+- Suggest a safer rewrite  
+- Use RAG + ML to give better, more contextual answers  
 
 ---
 
@@ -142,6 +142,36 @@ streamlit run app.py
    - ML prediction
    - Relevant policy snippets (RAG)
    - LLM explanation + rewrite
+
+---
+
+### 🧰 TECH STACK 
+-------------
+
+Frontend / UI
+- 🖥️ Streamlit
+
+Document Processing
+- 📄 PyPDF
+- ✂️ Custom text chunking
+
+Retrieval (RAG)
+- 🧠 OpenAI Embeddings (text-embedding-3-small)
+- 🗃️ FAISS Vector Index
+
+Machine Learning
+- 📊 Scikit-learn
+- 🧩 TF-IDF Vectorizer
+- 🛡️ Logistic Regression Classifier
+
+LLM Reasoning
+- 🤖 OpenAI Chat Models (gpt-4o-mini)
+
+Utility / Infra
+- 🔑 Python-dotenv
+- 🔢 NumPy
+- 💾 Pickle (model + vectorizer storage)
+
 
  
 
